@@ -1,1 +1,5 @@
 /MyApplication.spec
+build/
+dist/
+/venv/
+.idea/
