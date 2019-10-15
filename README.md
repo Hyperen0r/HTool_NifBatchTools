@@ -34,9 +34,14 @@ Scan as many folders as you want.
 
 2. Set desired __glossiness__ and __specular strength__
 
-3. Click on __"Apply"__ and wait. The process is sadly quite slow.
+3. Click on __"Apply"__ and wait. The process is sadly quite slow. On my system it takes approximatively 13 minutes to patch
+100 meshes. 
 
-4. If NifSkope is installed and set as the default program to open `.nif` files, double-clicking on an item of a list view will open it, in NifSkope.
+__Also, the gui will be mostly unresponsive (moving, resizing the window is near impossible). If the completion
+pourcentage has not changed for a very long time, the application may have crashed. To report an issue, please include the log file,
+situated alongside the executable.__
+
+If NifSkope is installed and set as the default program to open `.nif` files, double-clicking on an item of a list view will open it, in NifSkope.
 
 ## F.A.Q
 

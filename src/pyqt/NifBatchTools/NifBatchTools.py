@@ -3,6 +3,7 @@
 
 import shutil
 import itertools
+import time
 from tempfile import NamedTemporaryFile
 from PySide2.QtCore import QThreadPool, Qt, QSize, QThread
 from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QDoubleSpinBox, QFileDialog, QProgressBar, QMessageBox, \
@@ -301,63 +302,67 @@ class NifBatchTools(MainWindow):
         CONFIG.set("NIF", "SpecularStrength", str(self.spin_box_specular_strength.value())),
         save_config()
 
-        for indices in chunkify(range(self.nif_files_list_widget.count()), max(QThreadPool.globalInstance().maxThreadCount(), 3)):
+        for indices in chunkify(range(self.nif_files_list_widget.count()), QThreadPool.globalInstance().maxThreadCount()-1):
             worker = Worker(self.apply, indices=indices)
             worker.signals.finished.connect(self.finish_apply_action)
             worker.signals.progress.connect(self.progress)
 
             QThreadPool.globalInstance().start(worker)
-        log.info("Done assigning tasks")
 
     def apply(self, progress_callback, indices):
         for counter in indices:
             item = self.nif_files_list_widget.item(counter)
             item.setForeground(Qt.blue)
-            log.info("[" + str(counter) + "] working on : " + item.text())
 
-            if self.process_nif_files(item.text(), counter):
+            if self.process_nif_files(item.text()):
                 item.setForeground(Qt.darkGreen)
                 progress_callback.emit(next(self.processed_files))
             else:
                 item.setForeground(Qt.darkRed)
 
-    def process_nif_files(self, path, counter):
-        file_name = path.rsplit("/", 1)[1]
-
+    def process_nif_files(self, path):
         success = True
-        with open(path, 'rb') as stream:
-            data = NifFormat.Data()
-            try:
+        data = NifFormat.Data()
+
+        start = time.time()
+        try:
+            with open(path, 'rb') as stream:
                 data.read(stream)
-                root = data.roots[0]
+        except Exception:
+            log.exception("Error while reading stream from file : " + path)
+        stop = time.time()
+        print("Duration (Read): " + str(stop - start))
 
-                # First, let's get relevant NiTriShape block
-                block = None
-                index = 0
-                while not block and index < len(self.keywords):
-                    block = root.find(self.keywords[index])
-                    index += 1
+        start = time.time()
+        # First, let's get relevant NiTriShape block
+        block = None
+        index = 0
+        root = data.roots[0]
+        while not block and index < len(self.keywords):
+            block = root.find(self.keywords[index])
+            index += 1
 
-                # Second, if found, change its parameters
-                if block is not None:
-                    for subblock in block.tree():
-                        if subblock.__class__.__name__ == "BSLightingShaderProperty":
-                            old_gloss = subblock.glossiness
-                            subblock.glossiness = self.spin_box_glossiness.value()
-                            old_spec_strength = subblock.specular_strength
-                            subblock.specular_strength = self.spin_box_specular_strength.value()
-                            log.info("[" + str(counter) + "] ------ Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
-                            success = True
-            except Exception:
-                log.exception("Error while reading stream from file : " + path)
+        # Second, if found, change its parameters
+        if block is not None:
+            for subblock in block.tree():
+                if subblock.__class__.__name__ == "BSLightingShaderProperty":
+                    old_gloss = subblock.glossiness
+                    subblock.glossiness = self.spin_box_glossiness.value()
+                    old_spec_strength = subblock.specular_strength
+                    subblock.specular_strength = self.spin_box_specular_strength.value()
+                    log.info("[" + path + "] ------ Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
+                    success = True
+        stop = time.time()
+        print("Duration (Modify): " + str(stop - start))
 
+        start = time.time()
         if success:
-            # Finally, save changes
-            f = NamedTemporaryFile(mode='wb', delete=False)
-            tmp_file_name = f.name
-            data.write(f)
-            f.close()
-            shutil.copy(tmp_file_name, path)
-            os.remove(tmp_file_name)
+            try:
+                with open(path, 'wb') as stream:
+                    data.write(stream)
+            except Exception:
+                log.exception("Error while writing to file : " + path)
+        stop = time.time()
+        print("Duration (Copy): " + str(stop - start))
 
         return success
