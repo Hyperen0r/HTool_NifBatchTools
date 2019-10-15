@@ -28,6 +28,8 @@ if __name__ == '__main__':
         tool.setAppStyle(app)
         tool.open()
         sys.exit(app.exec_())
+    except SystemExit:
+        logging.info("Closing application")
     except:
         logging.exception("Fatal error :")
         raise
