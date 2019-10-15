@@ -4,3 +4,5 @@ dist/
 .idea/
 /htool.ini
 /htool.log
+/src/htool.ini
+/src/htool.log

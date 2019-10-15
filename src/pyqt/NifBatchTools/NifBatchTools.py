@@ -57,16 +57,9 @@ class NifBatchTools(MainWindow):
         nif_files_loaded = QuickyGui.create_label(self, ".nif files loaded")
         self.lcd_nif_files_loaded = QuickyGui.create_lcd(self)
 
-        self.lcd_nif_files_ignored = QuickyGui.create_lcd(self)
         nif_files_ignored = QuickyGui.create_label(self, ".nif files ignored")
-        nif_files_ignored.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lcd_nif_files_ignored = QuickyGui.create_lcd(self)
 
-
-        hbox = QHBoxLayout(self)
-        hbox.addWidget(nif_files_loaded)
-        hbox.addWidget(self.lcd_nif_files_loaded)
-        hbox.addWidget(self.lcd_nif_files_ignored)
-        hbox.addWidget(nif_files_ignored)
 
         self.nif_files_list_widget = QListWidget()
         self.nif_files_list_widget.setAlternatingRowColors(True)
@@ -103,8 +96,19 @@ class NifBatchTools(MainWindow):
         self.group_box_legends.setLayout(vbox)
 
         vbox = QVBoxLayout(self)
+
+        hbox = QHBoxLayout(self)
+        hbox.addWidget(nif_files_loaded)
+        hbox.addWidget(self.lcd_nif_files_loaded)
+
         vbox.addItem(hbox)
         vbox.addWidget(self.nif_files_list_widget)
+
+        hbox = QHBoxLayout(self)
+        hbox.addWidget(nif_files_ignored)
+        hbox.addWidget(self.lcd_nif_files_ignored)
+        vbox.addItem(hbox)
+
         vbox.addWidget(self.ignored_nif_files_list_widget)
         vbox.addWidget(self.group_box_legends)
 

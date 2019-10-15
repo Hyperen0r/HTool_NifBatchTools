@@ -4,6 +4,8 @@ Tool to batch .nif files, to apply glossiness and specular strength value to bod
 
 ## Description
 
+![Overview](res/img/tool.png)
+
 This tool will scan specified folder to find relevant .nif files, in order to modify the glossiness and specular strength
 of the body parts. To do so, the tool is looking in the .nif file, a block whose name is matching one of the provided keywords,
 so that only body parts are affected. 
@@ -12,6 +14,11 @@ __Verified on Skyrim Legendary Edition and with UUNP meshes. It may works with S
 may have to adjust the keywords, so that the meshes are not ignored__
 
 ## Installation
+
+### Requirements
+
+Not a hard requirement, but if Nifskope is installed and set as the default program to open `.nif` files, you will be able to
+automatically open files from the tool, by double-clicking on an item from a list view.
 
 ### From source
 If you do not want to use the provided executables, you can launch the tool from the source code, available on 
@@ -28,6 +35,8 @@ Scan as many folders as you want.
 2. Set desired __glossiness__ and __specular strength__
 
 3. Click on __"Apply"__ and wait. The process is sadly quite slow.
+
+4. __If NifSkope is installed and set as the default program to open `.nif` files, double-clicking on an item of a list view will open it, in NifSkope__
 
 ## F.A.Q
 
