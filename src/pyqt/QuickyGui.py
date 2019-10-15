@@ -26,6 +26,7 @@ def create_group_box(parent, text):
 
 def create_lcd(parent):
     lcd = QLCDNumber(parent)
+    lcd.setSegmentStyle(QLCDNumber.Flat)
     return lcd
 
 

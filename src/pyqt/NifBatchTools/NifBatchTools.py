@@ -4,9 +4,9 @@
 import shutil
 from tempfile import NamedTemporaryFile
 
-from PySide2.QtCore import QThreadPool, Qt
+from PySide2.QtCore import QThreadPool, Qt, QSize
 from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QDoubleSpinBox, QFileDialog, QProgressBar, QMessageBox, \
-    QListWidget, QSplitter, QWidget
+    QListWidget, QSplitter, QWidget, QListWidgetItem
 from pyffi.formats.nif import *
 
 from src.pyqt import QuickyGui
@@ -27,17 +27,14 @@ class NifBatchTools(MainWindow):
         self.source_folder = CONFIG.get("DEFAULT", "SourceFolder")
         self.destination_folder = CONFIG.get("DEFAULT", "DestinationFolder")
         self.keywords = list(map(lambda x: x.encode("ascii"), CONFIG.get("NIF", "keywords").replace(" ", "").split(",")))
-        self.nif_files = set()
+        self.nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
+        self.ignored_nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
+        self.setSize(QSize(700, 600))
 
         log.info("Source folder  : " + self.source_folder)
         log.info("Keywords       : " + str(self.keywords))
 
         self.init_ui()
-
-    def update_nif_files(self, value=0):
-        self.lcd_nif_files_loaded.display(str(len(self.nif_files)))
-        self.nif_files_list_widget.clear()
-        self.nif_files_list_widget.addItems(list(self.nif_files))
 
     def init_ui(self):
         main_splitter = QSplitter(self, Qt.Horizontal)
@@ -60,17 +57,56 @@ class NifBatchTools(MainWindow):
         nif_files_loaded = QuickyGui.create_label(self, ".nif files loaded")
         self.lcd_nif_files_loaded = QuickyGui.create_lcd(self)
 
-        vbox = QVBoxLayout(self)
+        self.lcd_nif_files_ignored = QuickyGui.create_lcd(self)
+        nif_files_ignored = QuickyGui.create_label(self, ".nif files ignored")
+        nif_files_ignored.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
 
         hbox = QHBoxLayout(self)
         hbox.addWidget(nif_files_loaded)
         hbox.addWidget(self.lcd_nif_files_loaded)
+        hbox.addWidget(self.lcd_nif_files_ignored)
+        hbox.addWidget(nif_files_ignored)
 
         self.nif_files_list_widget = QListWidget()
+        self.nif_files_list_widget.setAlternatingRowColors(True)
+        self.nif_files_list_widget.setStyleSheet("QListWidget {padding: 10px;} QListWidget::item { margin: 10px; }")
+        self.nif_files_list_widget.itemDoubleClicked.connect(self.open_file_location)
+
+        self.ignored_nif_files_list_widget = QListWidget()
+        self.ignored_nif_files_list_widget.setAlternatingRowColors(True)
+        self.ignored_nif_files_list_widget.setStyleSheet("QListWidget {padding: 10px;} QListWidget::item { margin: 10px}")
+        self.ignored_nif_files_list_widget.itemDoubleClicked.connect(self.open_file_location)
         self.update_nif_files()
 
+        self.group_box_legends = QuickyGui.create_group_box(self, "Legends")
+        instructions_3 = QuickyGui.create_label(self, "Grey - File ignored (root is not a NiNode)\n")
+        instructions_3.setStyleSheet("QLabel { color : grey; font-weight : bold }")
+        instructions_4 = QuickyGui.create_label(self, "Green - File correctly processed\n")
+        instructions_4.setStyleSheet("QLabel { color : darkGreen; font-weight : bold }")
+        instructions_5 = QuickyGui.create_label(self, "Blue - File is processing\n")
+        instructions_5.setStyleSheet("QLabel { color : darkBlue; font-weight : bold }")
+        instructions_6 = QuickyGui.create_label(self, "Red - File not processed.")
+        instructions_6.setStyleSheet("QLabel { color : darkRed; font-weight : bold }")
+        instructions_7 = QuickyGui.create_label(self, "Reason : Couldn't find a NiTriShape block whose name is specified in provided keywords. It may be normal, if there is no body part. But if there is and you want this file to be processed by the tool, then you must add the corresponding NiTriShape block's name (use nikskope to find it) to the list of keywords, located in the .ini file, situated alongside the executable."
+                                                      " If you have Nikskope, you can open the file by double-clicking on in, in the list view, or from your explorer. Restart the tool to load the new .ini file.")
+        instructions_7.setStyleSheet("QLabel { color : darkRed}")
+
+        vbox = QVBoxLayout()
+        vbox.setSpacing(5)
+        vbox.addWidget(instructions_3)
+        vbox.addWidget(instructions_4)
+        vbox.addWidget(instructions_5)
+        vbox.addWidget(instructions_6)
+        vbox.addWidget(instructions_7)
+
+        self.group_box_legends.setLayout(vbox)
+
+        vbox = QVBoxLayout(self)
         vbox.addItem(hbox)
         vbox.addWidget(self.nif_files_list_widget)
+        vbox.addWidget(self.ignored_nif_files_list_widget)
+        vbox.addWidget(self.group_box_legends)
 
         self.group_box_details.setLayout(vbox)
         right_v_box.addWidget(self.group_box_details)
@@ -78,10 +114,13 @@ class NifBatchTools(MainWindow):
         # ===== STEP 0 - Instructions =====
         self.group_box_instructions = QuickyGui.create_group_box(self, "Instructions")
 
-        instructions = QuickyGui.create_label(self, "By clicking on \"Scan Folder\", all .nif contained in this folder (subfolders and so on), will be added to the list of files to process. You can scan multiple folder, by clicking again. All files not already present will be added.")
+        instructions_1 = QuickyGui.create_label(self, "I. By clicking on \"Scan Folder\", all .nif contained in this folder (subfolders and so on), will be added to the set of files to be processed. You can scan multiple folder, by clicking again. All files not already present will be added.")
+        instructions_2 = QuickyGui.create_label(self, "II. Once your desired parameters are set, click on \"Apply\". Bewary, the process is quite slow (just opening the file is quite consuming somehow)")
 
         vbox = QVBoxLayout()
-        vbox.addWidget(instructions)
+        vbox.setSpacing(5)
+        vbox.addWidget(instructions_1)
+        vbox.addWidget(instructions_2)
 
         self.group_box_instructions.setLayout(vbox)
         left_v_box.addWidget(self.group_box_instructions)
@@ -151,6 +190,9 @@ class NifBatchTools(MainWindow):
         left_v_box.setSpacing(10)
         self.mainLayout.addWidget(main_splitter)
 
+    def open_file_location(self, item):
+        os.startfile(item.text(), 'open')
+
     def toggle(self, value):
         self.group_box_parameters.setEnabled(value)
         self.group_box_load_files.setEnabled(value)
@@ -159,17 +201,31 @@ class NifBatchTools(MainWindow):
     def progress(self, value):
         self.progress_bar.setValue(value)
 
+    def update_nif_files(self, value=0):
+        self.lcd_nif_files_loaded.display(self.nif_files_list_widget.count())
+        self.lcd_nif_files_ignored.display(self.ignored_nif_files_list_widget.count())
+
     def finish_action(self):
         self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(len(self.nif_files))
-        self.progress_bar.setValue(len(self.nif_files))
+        self.progress_bar.setMaximum(max(1, self.nif_files_list_widget.count()))
+        self.progress_bar.setValue(self.nif_files_list_widget.count())
         self.toggle(True)
         log.info("Done !")
-        QMessageBox.information(self, "Results", "Done !")
+
+    def finish_load_action(self, result):
+        self.finish_action()
+        QMessageBox.information(self, "Results", "Done !\n\n" + str(self.nif_files_list_widget.count()) + " .nif file(s) loaded.\n" + str(result) + " .nif files ignored.")
+
+    def finish_apply_action(self, result):
+        self.finish_action()
+        QMessageBox.information(self, "Results", "Done !\n\n" + str(result) + " .nif files patched.")
 
     def action_clear_files(self):
         log.info("Clearing loaded .nif files ...")
+        self.nif_files_list_widget.clear()
+        self.ignored_nif_files_list_widget.clear()
         self.nif_files.clear()
+        self.ignored_nif_files.clear()
         self.update_nif_files()
         self.progress_bar.reset()
 
@@ -181,7 +237,6 @@ class NifBatchTools(MainWindow):
 
         file_dialog = QFileDialog()
         file_dialog.setFileMode(QFileDialog.DirectoryOnly)
-        file_dialog.setOption(QFileDialog.ShowDirsOnly)
         file_dialog.setDirectory(self.source_folder)
 
         if file_dialog.exec_():
@@ -192,7 +247,7 @@ class NifBatchTools(MainWindow):
                 self.source_folder = file_dialog.directory()
 
         worker = Worker(self.load_files)
-        worker.signals.finished.connect(self.finish_action)
+        worker.signals.result.connect(self.finish_load_action)
         worker.signals.progress.connect(self.update_nif_files)
 
         self.thread_pool.start(worker)
@@ -201,6 +256,7 @@ class NifBatchTools(MainWindow):
         """
         Traverse folder to find .nif files
         """
+        ignored_files = 0
         if self.source_folder:
             log.info("Scanning directory : " + self.source_folder)
             CONFIG.set("DEFAULT", "SourceFolder", self.source_folder),
@@ -208,20 +264,37 @@ class NifBatchTools(MainWindow):
 
             for root, dirs, files in os.walk(self.source_folder):
                 for file in files:
-                    if file.endswith(".nif"):
-                        self.nif_files.add(root + "/" + file)
-                        progress_callback.emit(len(self.nif_files))
-        return
+                    path = root + "/" + file
+                    if file.endswith(".nif") and path not in self.nif_files and path not in self.ignored_nif_files:
+                        stream = open(path, "rb")
+                        data = NifFormat.Data()
+                        try:
+                            data.inspect(stream)
+                            if "NiNode".encode('ascii') != data.header.block_types[0]:
+                                item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
+                                item.setForeground(Qt.gray)
+                                ignored_files += 1
+                            elif any(keyword in self.keywords for keyword in data.header.strings):
+                                self.nif_files.add(path)
+                                self.nif_files_list_widget.addItem(path)
+                            else:
+                                item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
+                                item.setForeground(Qt.darkRed)
+                                ignored_files += 1
+                        except ValueError:
+                            log.exception("[" + file + "] - Too Big to inspect - skipping")
+                        progress_callback.emit(0) # emit parameter is not used
+        return ignored_files
 
     def action_apply(self):
         """
         Apply parameters to relevant .nif files
         """
-        if len(self.nif_files) == 0:
+        if self.nif_files_list_widget.count() == 0:
             QMessageBox.warning(self, "No .nif files loaded", "Don't forget to load .nif files !")
             return
 
-        log.info("Applying parameters to " + str(len(self.nif_files)) + " files ...")
+        log.info("Applying parameters to " + str(self.nif_files_list_widget.count()) + " files ...")
         self.toggle(False)
         self.progress_bar.setValue(0)
 
@@ -230,12 +303,13 @@ class NifBatchTools(MainWindow):
         save_config()
 
         worker = Worker(self.apply)
-        worker.signals.finished.connect(self.finish_action)
+        worker.signals.result.connect(self.finish_apply_action)
         worker.signals.progress.connect(self.progress)
 
         self.thread_pool.start(worker)
 
     def apply(self, progress_callback):
+        processed_files = 0
         for counter in range(0, self.nif_files_list_widget.count()):
 
             item = self.nif_files_list_widget.item(counter)
@@ -244,18 +318,22 @@ class NifBatchTools(MainWindow):
 
             result = self.process_nif_files(item.text())
 
-            if result:
+            if result == 1:
                 item.setForeground(Qt.darkGreen)
-            else:
+                processed_files += 1
+            elif result == 0:
                 item.setForeground(Qt.darkRed)
+            else:
+                item.setForeground(Qt.gray)
 
             progress_callback.emit(counter + 1)
-        return
+
+        return processed_files
 
     def process_nif_files(self, path):
         file_name = path.rsplit("/", 1)[1]
 
-        success = False
+        success = 0
         with open(path, 'rb') as stream:
             data = NifFormat.Data()
             data.read(stream)
@@ -277,9 +355,9 @@ class NifBatchTools(MainWindow):
                         old_spec_strength = subblock.specular_strength
                         subblock.specular_strength = self.spin_box_specular_strength.value()
                         log.info("        Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
-                        success = True
+                        success = 1
 
-        if success:
+        if success == 1:
             # Finaly, save changes
             f = NamedTemporaryFile(mode='wb', delete=False)
             tmp_file_name = f.name

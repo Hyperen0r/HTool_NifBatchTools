@@ -4,9 +4,9 @@ block_cipher = None
 
 
 a = Analysis(['src\\HTool.py'],
-             pathex=['D:\\Workspace\\PyQt\\HTool_NifBatchTools'],
+             pathex=['venv/Lib/site-packages', 'D:\\Workspace\\PyQt\\HTool_NifBatchTools'],
              binaries=[],
-             datas=[],
+             datas=[('venv/Lib/site-packages/pyffi/VERSION','pyffy')],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
@@ -23,11 +23,11 @@ exe = EXE(pyz,
           a.zipfiles,
           a.datas,
           [],
-          name='MyApplication',
+          name='HTool - NifBatchTools',
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,
           upx=True,
           upx_exclude=[],
           runtime_tmpdir=None,
-          console=False )
+          console=True )
