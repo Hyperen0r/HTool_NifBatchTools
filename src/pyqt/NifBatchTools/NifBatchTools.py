@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import shutil
+import itertools
 from tempfile import NamedTemporaryFile
-
-from PySide2.QtCore import QThreadPool, Qt, QSize
+from PySide2.QtCore import QThreadPool, Qt, QSize, QThread
 from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QDoubleSpinBox, QFileDialog, QProgressBar, QMessageBox, \
-    QListWidget, QSplitter, QWidget, QListWidgetItem
+    QListWidget, QSplitter, QWidget, QListWidgetItem, QApplication
 from pyffi.formats.nif import *
-
 from src.pyqt import QuickyGui
 from src.pyqt.MainWindow import MainWindow
 from src.pyqt.Worker import Worker
@@ -24,13 +23,13 @@ class NifBatchTools(MainWindow):
         super().__init__("HTools - NifBatchTools")
         log.info("Opening NifBatchTools window")
 
-        self.thread_pool = QThreadPool()
         self.source_folder = CONFIG.get("DEFAULT", "SourceFolder")
         self.destination_folder = CONFIG.get("DEFAULT", "DestinationFolder")
         self.keywords = list(map(lambda x: x.encode("ascii"), CONFIG.get("NIF", "keywords").replace(" ", "").split(",")))
         self.nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
         self.ignored_nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
         self.setSize(QSize(700, 600))
+        self.processed_files = itertools.count()
 
         log.info("Source folder  : " + self.source_folder)
         log.info("Keywords       : " + str(self.keywords))
@@ -201,7 +200,7 @@ class NifBatchTools(MainWindow):
         self.group_box_apply.setEnabled(value)
 
     def progress(self, value):
-        self.progress_bar.setValue(value)
+        self.progress_bar.setValue(value+1)
 
     def update_nif_files(self, value=0):
         self.lcd_nif_files_loaded.display(self.nif_files_list_widget.count())
@@ -218,9 +217,10 @@ class NifBatchTools(MainWindow):
         self.finish_action()
         QMessageBox.information(self, "Results", "Done !\n\n" + str(self.nif_files_list_widget.count()) + " .nif file(s) loaded.\n" + str(result) + " .nif files ignored.")
 
-    def finish_apply_action(self, result):
-        self.finish_action()
-        QMessageBox.information(self, "Results", "Done !\n\n" + str(result) + " .nif files patched.")
+    def finish_apply_action(self):
+        if QThreadPool.globalInstance().activeThreadCount() == 0:
+            self.finish_action()
+            QMessageBox.information(self, "Results", "Done !\n\n" + str(self.progress_bar.value()) + " .nif file(s) loaded.\n")
 
     def action_clear_files(self):
         log.info("Clearing loaded .nif files ...")
@@ -257,7 +257,7 @@ class NifBatchTools(MainWindow):
         worker.signals.result.connect(self.finish_load_action)
         worker.signals.progress.connect(self.update_nif_files)
 
-        self.thread_pool.start(worker)
+        QThreadPool.globalInstance().start(worker)
 
     def load_files(self, progress_callback):
         """
@@ -295,71 +295,64 @@ class NifBatchTools(MainWindow):
         log.info("Applying parameters to " + str(self.nif_files_list_widget.count()) + " files ...")
         self.toggle(False)
         self.progress_bar.setValue(0)
+        self.processed_files = itertools.count()
 
         CONFIG.set("NIF", "Glossiness", str(self.spin_box_glossiness.value())),
         CONFIG.set("NIF", "SpecularStrength", str(self.spin_box_specular_strength.value())),
         save_config()
 
-        print(self.thread_pool.activeThreadCount())
-        for range_ in chunkify(range(self.nif_files_list_widget.count()), self.thread_pool.maxThreadCount()):
-            print(*range_)
-        #worker = Worker(self.apply)
-        #worker.signals.result.connect(self.finish_apply_action)
-        #worker.signals.progress.connect(self.progress)
+        for indices in chunkify(range(self.nif_files_list_widget.count()), max(QThreadPool.globalInstance().maxThreadCount(), 3)):
+            worker = Worker(self.apply, indices=indices)
+            worker.signals.finished.connect(self.finish_apply_action)
+            worker.signals.progress.connect(self.progress)
 
-        #self.thread_pool.start(worker)
+            QThreadPool.globalInstance().start(worker)
+        log.info("Done assigning tasks")
 
-    def apply(self, progress_callback):
-        processed_files = 0
-        for counter in range(0, self.nif_files_list_widget.count()):
-
+    def apply(self, progress_callback, indices):
+        for counter in indices:
             item = self.nif_files_list_widget.item(counter)
             item.setForeground(Qt.blue)
             log.info("[" + str(counter) + "] working on : " + item.text())
 
-            result = self.process_nif_files(item.text())
-
-            if result == 1:
+            if self.process_nif_files(item.text(), counter):
                 item.setForeground(Qt.darkGreen)
-                processed_files += 1
-            elif result == 0:
-                item.setForeground(Qt.darkRed)
+                progress_callback.emit(next(self.processed_files))
             else:
-                item.setForeground(Qt.gray)
+                item.setForeground(Qt.darkRed)
 
-            progress_callback.emit(counter + 1)
-
-        return processed_files
-
-    def process_nif_files(self, path):
+    def process_nif_files(self, path, counter):
         file_name = path.rsplit("/", 1)[1]
 
-        success = 0
+        success = True
         with open(path, 'rb') as stream:
             data = NifFormat.Data()
-            data.read(stream)
-            root = data.roots[0]
+            try:
+                data.read(stream)
+                root = data.roots[0]
 
-            # First, let's get relevant NiTriShape block
-            block = None
-            index = 0
-            while not block and index < len(self.keywords):
-                block = root.find(self.keywords[index])
-                index += 1
+                # First, let's get relevant NiTriShape block
+                block = None
+                index = 0
+                while not block and index < len(self.keywords):
+                    block = root.find(self.keywords[index])
+                    index += 1
 
-            # Second, if found, change its parameters
-            if block is not None:
-                for subblock in block.tree():
-                    if subblock.__class__.__name__ == "BSLightingShaderProperty":
-                        old_gloss = subblock.glossiness
-                        subblock.glossiness = self.spin_box_glossiness.value()
-                        old_spec_strength = subblock.specular_strength
-                        subblock.specular_strength = self.spin_box_specular_strength.value()
-                        log.info("        Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
-                        success = 1
+                # Second, if found, change its parameters
+                if block is not None:
+                    for subblock in block.tree():
+                        if subblock.__class__.__name__ == "BSLightingShaderProperty":
+                            old_gloss = subblock.glossiness
+                            subblock.glossiness = self.spin_box_glossiness.value()
+                            old_spec_strength = subblock.specular_strength
+                            subblock.specular_strength = self.spin_box_specular_strength.value()
+                            log.info("[" + str(counter) + "] ------ Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
+                            success = True
+            except Exception:
+                log.exception("Error while reading stream from file : " + path)
 
-        if success == 1:
-            # Finaly, save changes
+        if success:
+            # Finally, save changes
             f = NamedTemporaryFile(mode='wb', delete=False)
             tmp_file_name = f.name
             data.write(f)
