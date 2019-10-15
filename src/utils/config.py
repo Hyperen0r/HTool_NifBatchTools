@@ -15,15 +15,14 @@ def create_config():
     config = configparser.ConfigParser()
 
     config['DEFAULT'] = {
-        "SourceFolder": "",
-        "DestinationFolder": "",
-        "Overwrite": "True"
+        "sourceFolder": "",
+        "softLimit": "100"
     }
 
     config["NIF"] = {
         "keywords" : "UUNP, FemaleHead, Hands, Feet, CL0, CL1",
-        "Glossiness": "450",
-        "SpecularStrength": "3.5"
+        "glossiness": "450",
+        "specularStrength": "3.5"
     }
 
     config["LOG"] = {

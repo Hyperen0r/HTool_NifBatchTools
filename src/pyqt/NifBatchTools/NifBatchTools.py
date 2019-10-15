@@ -1,21 +1,17 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import shutil
 import itertools
-import time
-from tempfile import NamedTemporaryFile
 
-from PySide2 import QtConcurrent
-from PySide2.QtCore import QThreadPool, Qt, QSize, QThread
+from PySide2.QtCore import QThreadPool, Qt, QSize
 from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QDoubleSpinBox, QFileDialog, QProgressBar, QMessageBox, \
-    QListWidget, QSplitter, QWidget, QListWidgetItem, QApplication
+    QListWidget, QSplitter, QWidget, QListWidgetItem
 from pyffi.formats.nif import *
+
 from src.pyqt import QuickyGui
 from src.pyqt.MainWindow import MainWindow
-from src.pyqt.Worker import Worker
-from src.utils.config import CONFIG, save_config
-from src.utils.misc import chunkify
+from src.pyqt.Worker import NifProcessWorker, Worker
+from src.utils.config import CONFIG, save_config, get_config
 
 log = logging.getLogger(__name__)
 
@@ -27,13 +23,11 @@ class NifBatchTools(MainWindow):
         log.info("Opening NifBatchTools window")
 
         self.source_folder = CONFIG.get("DEFAULT", "SourceFolder")
-        self.destination_folder = CONFIG.get("DEFAULT", "DestinationFolder")
         self.keywords = list(map(lambda x: x.encode("ascii"), CONFIG.get("NIF", "keywords").replace(" ", "").split(",")))
         self.nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
         self.ignored_nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
         self.setSize(QSize(700, 600))
         self.processed_files = itertools.count()
-        self.shown_results = False
 
         log.info("Source folder  : " + self.source_folder)
         log.info("Keywords       : " + str(self.keywords))
@@ -205,9 +199,6 @@ class NifBatchTools(MainWindow):
         self.group_box_load_files.setEnabled(value)
         self.group_box_apply.setEnabled(value)
 
-    def progress(self, value):
-        self.progress_bar.setValue(value+1)
-
     def update_nif_files(self, value=0):
         self.lcd_nif_files_loaded.display(self.nif_files_list_widget.count())
         self.lcd_nif_files_ignored.display(self.ignored_nif_files_list_widget.count())
@@ -223,9 +214,20 @@ class NifBatchTools(MainWindow):
         self.finish_action()
         QMessageBox.information(self, "Results", "Done !\n\n" + str(self.nif_files_list_widget.count()) + " .nif file(s) loaded.\n" + str(result) + " .nif files ignored.")
 
+    def start_apply_action(self, index):
+        item = self.nif_files_list_widget.item(index)
+        item.setForeground(Qt.blue)
+
+    def result_apply_action(self, index, result):
+        item = self.nif_files_list_widget.item(index)
+        if result:
+            item.setForeground(Qt.darkGreen)
+        else:
+            item.setForeground(Qt.darkRed)
+        self.progress_bar.setValue(next(self.processed_files)+1)
+
     def finish_apply_action(self):
-        if QThreadPool.globalInstance().activeThreadCount() == 0 and not self.shown_results:
-            self.shown_results = True
+        if self.progress_bar.value() == self.nif_files_list_widget.count():
             self.finish_action()
             QMessageBox.information(self, "Results", "Done !\n\n" + str(self.progress_bar.value()) + " .nif file(s) loaded.\n")
 
@@ -261,8 +263,8 @@ class NifBatchTools(MainWindow):
             save_config()
 
         worker = Worker(self.load_files)
-        worker.signals.result.connect(self.finish_load_action)
         worker.signals.progress.connect(self.update_nif_files)
+        worker.signals.result.connect(self.finish_load_action)
 
         QThreadPool.globalInstance().start(worker)
 
@@ -278,10 +280,15 @@ class NifBatchTools(MainWindow):
                     stream = open(path, "rb")
                     data = NifFormat.Data()
                     success = False
+                    add_to_ignored_list = False
                     try:
                         data.inspect(stream)
-                        if "NiNode".encode('ascii') == data.header.block_types[0] and any(keyword in self.keywords for keyword in data.header.strings):
-                            success = True
+                        if "NiNode".encode('ascii') == data.header.block_types[0]:
+                            if any(keyword in self.keywords for keyword in data.header.strings):
+                                success = True
+                            else:
+                                add_to_ignored_list = True
+
                     except ValueError:
                         log.exception("[" + file + "] - Too Big to inspect - skipping")
                     except Exception:
@@ -290,7 +297,7 @@ class NifBatchTools(MainWindow):
                         if success:
                             self.nif_files.add(path)
                             self.nif_files_list_widget.addItem(path)
-                        else:
+                        elif add_to_ignored_list:
                             item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
                             item.setForeground(Qt.darkRed)
                             ignored_files += 1
@@ -305,9 +312,24 @@ class NifBatchTools(MainWindow):
             QMessageBox.warning(self, "No .nif files loaded", "Don't forget to load .nif files !")
             return
 
+
+        if self.nif_files_list_widget.count() >= get_config().getint("DEFAULT", "softLimit"):
+            box = QMessageBox()
+            box.setIcon(QMessageBox.Question)
+            box.setWindowTitle('Are you sure ?')
+            box.setText("The tool may struggle with more than 100 .nif files at once. We advise you to process small batches.\n\nAre you sure you wish to continue ?")
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            buttonY = box.button(QMessageBox.Yes)
+            buttonY.setText('Yes')
+            buttonN = box.button(QMessageBox.No)
+            buttonN.setText('No')
+            box.exec_()
+
+            if box.clickedButton() == buttonN:
+                return
+
         log.info("Applying parameters to " + str(self.nif_files_list_widget.count()) + " files ...")
         self.toggle(False)
-        self.shown_results = False
         self.progress_bar.setValue(0)
         self.processed_files = itertools.count()
 
@@ -317,62 +339,12 @@ class NifBatchTools(MainWindow):
 
         QMessageBox.warning(self, "Attention !", "The process is quite slow.\n\nThe gui will be mostly unresponsive to your input. Don't close the application, unless the completion pourcentage has not been updated in a long time (several minutes).\nIt took me 13 minutes to process 100 files for example.")
 
-        for indices in chunkify(range(self.nif_files_list_widget.count()), QThreadPool.globalInstance().maxThreadCount()-1):
-            worker = Worker(self.apply, indices=indices)
+        #for indices in chunkify(range(self.nif_files_list_widget.count()), QThreadPool.globalInstance().maxThreadCount()-1):
+        QThreadPool.globalInstance().setExpiryTimeout(-1)
+        for index in range(self.nif_files_list_widget.count()):
+            item = self.nif_files_list_widget.item(index)
+            worker = NifProcessWorker(index=index, path=item.text(), keywords=self.keywords, glossiness=self.spin_box_glossiness.value(), specular_strength=self.spin_box_specular_strength.value())
+            worker.signals.start.connect(self.start_apply_action)
+            worker.signals.result.connect(self.result_apply_action)
             worker.signals.finished.connect(self.finish_apply_action)
-            worker.signals.progress.connect(self.progress)
-
             QThreadPool.globalInstance().start(worker)
-
-    def apply(self, progress_callback, indices):
-        for counter in indices:
-            item = self.nif_files_list_widget.item(counter)
-            item.setForeground(Qt.blue)
-
-            if self.process_nif_files(item.text()):
-                item.setForeground(Qt.darkGreen)
-                progress_callback.emit(next(self.processed_files))
-            else:
-                item.setForeground(Qt.darkRed)
-
-    def process_nif_files(self, path):
-        success = True
-        data = NifFormat.Data()
-
-        try:
-            with open(path, 'rb') as stream:
-                data.read(stream)
-        except Exception:
-            log.exception("Error while reading stream from file : " + path)
-
-        # First, let's get relevant NiTriShape block
-        block = None
-        index = 0
-
-        try:
-            root = data.roots[0]
-            while not block and index < len(self.keywords):
-                block = root.find(self.keywords[index])
-                index += 1
-
-            # Second, if found, change its parameters
-            if block is not None:
-                for subblock in block.tree():
-                    if subblock.__class__.__name__ == "BSLightingShaderProperty":
-                        old_gloss = subblock.glossiness
-                        subblock.glossiness = self.spin_box_glossiness.value()
-                        old_spec_strength = subblock.specular_strength
-                        subblock.specular_strength = self.spin_box_specular_strength.value()
-                        log.info("[" + path + "] ------ Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
-                        success = True
-        except IndexError:
-            pass
-
-        if success:
-            try:
-                with open(path, 'wb') as stream:
-                    data.write(stream)
-            except Exception:
-                log.exception("Error while writing to file : " + path)
-
-        return success
