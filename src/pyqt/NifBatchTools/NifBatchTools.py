@@ -13,6 +13,7 @@ from src.pyqt import QuickyGui
 from src.pyqt.MainWindow import MainWindow
 from src.pyqt.Worker import Worker
 from src.utils.config import CONFIG, save_config
+from src.utils.misc import chunkify
 
 log = logging.getLogger(__name__)
 
@@ -73,13 +74,11 @@ class NifBatchTools(MainWindow):
         self.update_nif_files()
 
         self.group_box_legends = QuickyGui.create_group_box(self, "Legends")
-        instructions_3 = QuickyGui.create_label(self, "Grey - File ignored (root is not a NiNode)\n")
-        instructions_3.setStyleSheet("QLabel { color : grey; font-weight : bold }")
         instructions_4 = QuickyGui.create_label(self, "Green - File correctly processed\n")
         instructions_4.setStyleSheet("QLabel { color : darkGreen; font-weight : bold }")
         instructions_5 = QuickyGui.create_label(self, "Blue - File is processing\n")
         instructions_5.setStyleSheet("QLabel { color : darkBlue; font-weight : bold }")
-        instructions_6 = QuickyGui.create_label(self, "Red - File not processed.")
+        instructions_6 = QuickyGui.create_label(self, "Red - File ignored.")
         instructions_6.setStyleSheet("QLabel { color : darkRed; font-weight : bold }")
         instructions_7 = QuickyGui.create_label(self, "Reason : Couldn't find a NiTriShape block whose name is specified in provided keywords. It may be normal, if there is no body part. But if there is and you want this file to be processed by the tool, then you must add the corresponding NiTriShape block's name (use nikskope to find it) to the list of keywords, located in the .ini file, situated alongside the executable."
                                                       " If you have Nikskope, you can open the file by double-clicking on in, in the list view, or from your explorer. Restart the tool to load the new .ini file.")
@@ -87,7 +86,6 @@ class NifBatchTools(MainWindow):
 
         vbox = QVBoxLayout()
         vbox.setSpacing(5)
-        vbox.addWidget(instructions_3)
         vbox.addWidget(instructions_4)
         vbox.addWidget(instructions_5)
         vbox.addWidget(instructions_6)
@@ -250,6 +248,11 @@ class NifBatchTools(MainWindow):
             else:
                 self.source_folder = file_dialog.directory()
 
+        if self.source_folder:
+            log.info("Scanning directory : " + self.source_folder)
+            CONFIG.set("DEFAULT", "SourceFolder", self.source_folder),
+            save_config()
+
         worker = Worker(self.load_files)
         worker.signals.result.connect(self.finish_load_action)
         worker.signals.progress.connect(self.update_nif_files)
@@ -261,33 +264,24 @@ class NifBatchTools(MainWindow):
         Traverse folder to find .nif files
         """
         ignored_files = 0
-        if self.source_folder:
-            log.info("Scanning directory : " + self.source_folder)
-            CONFIG.set("DEFAULT", "SourceFolder", self.source_folder),
-            save_config()
-
-            for root, dirs, files in os.walk(self.source_folder):
-                for file in files:
-                    path = root + "/" + file
-                    if file.endswith(".nif") and path not in self.nif_files and path not in self.ignored_nif_files:
-                        stream = open(path, "rb")
-                        data = NifFormat.Data()
-                        try:
-                            data.inspect(stream)
-                            if "NiNode".encode('ascii') != data.header.block_types[0]:
-                                item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
-                                item.setForeground(Qt.gray)
-                                ignored_files += 1
-                            elif any(keyword in self.keywords for keyword in data.header.strings):
-                                self.nif_files.add(path)
-                                self.nif_files_list_widget.addItem(path)
-                            else:
-                                item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
-                                item.setForeground(Qt.darkRed)
-                                ignored_files += 1
-                        except ValueError:
-                            log.exception("[" + file + "] - Too Big to inspect - skipping")
-                        progress_callback.emit(0) # emit parameter is not used
+        for root, dirs, files in os.walk(self.source_folder):
+            for file in files:
+                path = root + "/" + file
+                if file.endswith(".nif") and path not in self.nif_files and path not in self.ignored_nif_files:
+                    stream = open(path, "rb")
+                    data = NifFormat.Data()
+                    try:
+                        data.inspect(stream)
+                        if "NiNode".encode('ascii') == data.header.block_types[0] and any(keyword in self.keywords for keyword in data.header.strings):
+                            self.nif_files.add(path)
+                            self.nif_files_list_widget.addItem(path)
+                        else:
+                            item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
+                            item.setForeground(Qt.darkRed)
+                            ignored_files += 1
+                    except ValueError:
+                        log.exception("[" + file + "] - Too Big to inspect - skipping")
+                    progress_callback.emit(0) # emit parameter is not used
         return ignored_files
 
     def action_apply(self):
@@ -306,11 +300,14 @@ class NifBatchTools(MainWindow):
         CONFIG.set("NIF", "SpecularStrength", str(self.spin_box_specular_strength.value())),
         save_config()
 
-        worker = Worker(self.apply)
-        worker.signals.result.connect(self.finish_apply_action)
-        worker.signals.progress.connect(self.progress)
+        print(self.thread_pool.activeThreadCount())
+        for range_ in chunkify(range(self.nif_files_list_widget.count()), self.thread_pool.maxThreadCount()):
+            print(*range_)
+        #worker = Worker(self.apply)
+        #worker.signals.result.connect(self.finish_apply_action)
+        #worker.signals.progress.connect(self.progress)
 
-        self.thread_pool.start(worker)
+        #self.thread_pool.start(worker)
 
     def apply(self, progress_callback):
         processed_files = 0

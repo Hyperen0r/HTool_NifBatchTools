@@ -21,7 +21,7 @@ def create_config():
     }
 
     config["NIF"] = {
-        "keywords" : "UUNP, Hands, Feet",
+        "keywords" : "UUNP, FemaleHead, Hands, Feet, CL0, CL1",
         "Glossiness": "450",
         "SpecularStrength": "3.5"
     }
