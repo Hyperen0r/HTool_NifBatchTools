@@ -2,6 +2,8 @@
 
 Tool to batch .nif files, to apply glossiness and specular strength value to body parts (Head, body, hand, feet)
 
+__WARNING :__ The tool is in BETA, I strongly advise you to use this tool only on __generated meshes from Bodyslide !__
+
 ## Description
 
 ![Overview](res/img/tool.png)
@@ -83,4 +85,4 @@ The name is situated on the same line in the second column __(4)__. See image be
 
 * __Applying patch is very slow__
 
-_Sadly the plugin I used is very slow to read the .nif files (when calling data.read(stream), to be precise)_
+_Sadly the read and write operation of the plugin used to manipulate .nif files are very slow (almost 100% of the compute time)_

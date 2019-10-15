@@ -5,6 +5,8 @@ import shutil
 import itertools
 import time
 from tempfile import NamedTemporaryFile
+
+from PySide2 import QtConcurrent
 from PySide2.QtCore import QThreadPool, Qt, QSize, QThread
 from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QDoubleSpinBox, QFileDialog, QProgressBar, QMessageBox, \
     QListWidget, QSplitter, QWidget, QListWidgetItem, QApplication
@@ -31,6 +33,7 @@ class NifBatchTools(MainWindow):
         self.ignored_nif_files = set() # improve performance (better to check in a set rather than in a QListWidget
         self.setSize(QSize(700, 600))
         self.processed_files = itertools.count()
+        self.shown_results = False
 
         log.info("Source folder  : " + self.source_folder)
         log.info("Keywords       : " + str(self.keywords))
@@ -78,9 +81,11 @@ class NifBatchTools(MainWindow):
         instructions_4.setStyleSheet("QLabel { color : darkGreen; font-weight : bold }")
         instructions_5 = QuickyGui.create_label(self, "Blue - File is processing\n")
         instructions_5.setStyleSheet("QLabel { color : darkBlue; font-weight : bold }")
-        instructions_6 = QuickyGui.create_label(self, "Red - File ignored.")
+        instructions_6 = QuickyGui.create_label(self, "Red - File ignored/with errors.")
         instructions_6.setStyleSheet("QLabel { color : darkRed; font-weight : bold }")
-        instructions_7 = QuickyGui.create_label(self, "Reason : Couldn't find a NiTriShape block whose name is specified in provided keywords. It may be normal, if there is no body part. But if there is and you want this file to be processed by the tool, then you must add the corresponding NiTriShape block's name (use nikskope to find it) to the list of keywords, located in the .ini file, situated alongside the executable."
+        instructions_7 = QuickyGui.create_label(self, "Reasons : "
+                                                      "\n * Check log to see if there is an error concerning this file, or try to open it with NifSkope"
+                                                      "\n * Otherwise it couldn't find a NiTriShape block whose name is specified in provided keywords. It may be normal, if there is no body part. But if there is and you want this file to be processed by the tool, then you must add the corresponding NiTriShape block's name (use nikskope to find it) to the list of keywords, located in the .ini file, situated alongside the executable."
                                                       " If you have Nikskope, you can open the file by double-clicking on in, in the list view, or from your explorer. Restart the tool to load the new .ini file.")
         instructions_7.setStyleSheet("QLabel { color : darkRed}")
 
@@ -219,7 +224,8 @@ class NifBatchTools(MainWindow):
         QMessageBox.information(self, "Results", "Done !\n\n" + str(self.nif_files_list_widget.count()) + " .nif file(s) loaded.\n" + str(result) + " .nif files ignored.")
 
     def finish_apply_action(self):
-        if QThreadPool.globalInstance().activeThreadCount() == 0:
+        if QThreadPool.globalInstance().activeThreadCount() == 0 and not self.shown_results:
+            self.shown_results = True
             self.finish_action()
             QMessageBox.information(self, "Results", "Done !\n\n" + str(self.progress_bar.value()) + " .nif file(s) loaded.\n")
 
@@ -271,17 +277,23 @@ class NifBatchTools(MainWindow):
                 if file.endswith(".nif") and path not in self.nif_files and path not in self.ignored_nif_files:
                     stream = open(path, "rb")
                     data = NifFormat.Data()
+                    success = False
                     try:
                         data.inspect(stream)
                         if "NiNode".encode('ascii') == data.header.block_types[0] and any(keyword in self.keywords for keyword in data.header.strings):
+                            success = True
+                    except ValueError:
+                        log.exception("[" + file + "] - Too Big to inspect - skipping")
+                    except Exception:
+                        log.exception("[" + file + "] - Error")
+                    finally:
+                        if success:
                             self.nif_files.add(path)
                             self.nif_files_list_widget.addItem(path)
                         else:
                             item = QListWidgetItem(path, self.ignored_nif_files_list_widget)
                             item.setForeground(Qt.darkRed)
                             ignored_files += 1
-                    except ValueError:
-                        log.exception("[" + file + "] - Too Big to inspect - skipping")
                     progress_callback.emit(0) # emit parameter is not used
         return ignored_files
 
@@ -295,12 +307,15 @@ class NifBatchTools(MainWindow):
 
         log.info("Applying parameters to " + str(self.nif_files_list_widget.count()) + " files ...")
         self.toggle(False)
+        self.shown_results = False
         self.progress_bar.setValue(0)
         self.processed_files = itertools.count()
 
         CONFIG.set("NIF", "Glossiness", str(self.spin_box_glossiness.value())),
         CONFIG.set("NIF", "SpecularStrength", str(self.spin_box_specular_strength.value())),
         save_config()
+
+        QMessageBox.warning(self, "Attention !", "The process is quite slow.\n\nThe gui will be mostly unresponsive to your input. Don't close the application, unless the completion pourcentage has not been updated in a long time (several minutes).\nIt took me 13 minutes to process 100 files for example.")
 
         for indices in chunkify(range(self.nif_files_list_widget.count()), QThreadPool.globalInstance().maxThreadCount()-1):
             worker = Worker(self.apply, indices=indices)
@@ -324,45 +339,40 @@ class NifBatchTools(MainWindow):
         success = True
         data = NifFormat.Data()
 
-        start = time.time()
         try:
             with open(path, 'rb') as stream:
                 data.read(stream)
         except Exception:
             log.exception("Error while reading stream from file : " + path)
-        stop = time.time()
-        print("Duration (Read): " + str(stop - start))
 
-        start = time.time()
         # First, let's get relevant NiTriShape block
         block = None
         index = 0
-        root = data.roots[0]
-        while not block and index < len(self.keywords):
-            block = root.find(self.keywords[index])
-            index += 1
 
-        # Second, if found, change its parameters
-        if block is not None:
-            for subblock in block.tree():
-                if subblock.__class__.__name__ == "BSLightingShaderProperty":
-                    old_gloss = subblock.glossiness
-                    subblock.glossiness = self.spin_box_glossiness.value()
-                    old_spec_strength = subblock.specular_strength
-                    subblock.specular_strength = self.spin_box_specular_strength.value()
-                    log.info("[" + path + "] ------ Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
-                    success = True
-        stop = time.time()
-        print("Duration (Modify): " + str(stop - start))
+        try:
+            root = data.roots[0]
+            while not block and index < len(self.keywords):
+                block = root.find(self.keywords[index])
+                index += 1
 
-        start = time.time()
+            # Second, if found, change its parameters
+            if block is not None:
+                for subblock in block.tree():
+                    if subblock.__class__.__name__ == "BSLightingShaderProperty":
+                        old_gloss = subblock.glossiness
+                        subblock.glossiness = self.spin_box_glossiness.value()
+                        old_spec_strength = subblock.specular_strength
+                        subblock.specular_strength = self.spin_box_specular_strength.value()
+                        log.info("[" + path + "] ------ Glossiness " + str(old_gloss) + " -> " + str(self.spin_box_glossiness.value()) + " | Specular Strength " + str(old_spec_strength) + " -> " + str(self.spin_box_specular_strength.value()))
+                        success = True
+        except IndexError:
+            pass
+
         if success:
             try:
                 with open(path, 'wb') as stream:
                     data.write(stream)
             except Exception:
                 log.exception("Error while writing to file : " + path)
-        stop = time.time()
-        print("Duration (Copy): " + str(stop - start))
 
         return success
