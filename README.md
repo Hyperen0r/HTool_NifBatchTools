@@ -18,13 +18,13 @@ may have to adjust the keywords, so that the meshes are not ignored__
 ### Requirements
 
 Not a hard requirement, but if Nifskope is installed and set as the default program to open `.nif` files, you will be able to
-automatically open files from the tool, by double-clicking on an item from a list view.
+open files from the tool, by double-clicking on an item from a list view.
 
 ### From source
-If you do not want to use the provided executables, you can launch the tool from the source code, available on 
+If you do not want to use the provided executable, you can launch the tool from the source code, available on 
 [GitHub](https://github.com/Hyperen0r/HTool_NifBatchTools). See section __Tools/Libraries used__.
 
-### From executables
+### From executable
 Run anywhere.
 
 ## How to use
@@ -36,7 +36,7 @@ Scan as many folders as you want.
 
 3. Click on __"Apply"__ and wait. The process is sadly quite slow.
 
-4. __If NifSkope is installed and set as the default program to open `.nif` files, double-clicking on an item of a list view will open it, in NifSkope__
+4. If NifSkope is installed and set as the default program to open `.nif` files, double-clicking on an item of a list view will open it, in NifSkope.
 
 ## F.A.Q
 
@@ -47,7 +47,7 @@ _UUNP, FemaleHead, Hands, Feet, CL0, CL1_
 * __How can I add keywords ?__
 
 1. _Open htool.ini (located alongside the .exe. If not, run the tool once to generate the default one)._
-2. _Add your entry to the list of keywords, e.g: `keywords= keywords1, your_keywords, ...`_
+2. _Add your entry to the list of keywords, e.g: `keywords= keyword1, your_keyword, ...`_
 
 * __How can I set the default value for glossiness and specular strength ?__
 
@@ -60,19 +60,19 @@ specularstrength = 5.0
 
 * __My meshes is ignored/grey/red/not processed__
 
-The goal of this tool is to affect only body parts. So by using keywords, only the block matching one of the keyword, 
-will see his glossiness and specular strength to be modified. If you need a block to be processed, add his name to the
+The goal of this tool is to affect only body parts. So by using keywords, only the block matching one of the keyword 
+will see his glossiness and specular strength modified. If you need a block to be processed, add his name to the
 keywords (provided by the .ini file situated alongside the executable. If not, run the tool once to generate the 
 default one). To find the name, you need to open the mesh with [NifSkope](https://github.com/niftools/nifskope/releases). 
 You are looking for a block of type `NiTriShape` __(1)__ that, when selected, highlight the vertices of a body part __(2)__. 
-The name is situated on the same line in the second column. See image below : ![How to find the name of a block, using NifSkope](res/img/find_name.png)
+The name is situated on the same line in the second column __(4)__. See image below : ![How to find the name of a block, using NifSkope](res/img/find_name.png)
 
 ## Tools/Libraries used
 
 * Python 3.7.4 (PyCharm IDE)
-* [Pyffi](https://github.com/niftools/pyffi)
-* [PySide2](https://wiki.qt.io/Qt_for_Python)
-* [PyInstaller](https://www.pyinstaller.org/)
+* [Pyffi](https://github.com/niftools/pyffi)_, to read .nif files_
+* [PySide2](https://wiki.qt.io/Qt_for_Python)_, to build GUI_
+* [PyInstaller](https://www.pyinstaller.org/)_, to build installer_
 
 ## Known problems
 
