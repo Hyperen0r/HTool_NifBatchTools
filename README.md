@@ -22,12 +22,24 @@ may have to adjust the keywords, so that the meshes are not ignored__
 Not a hard requirement, but if Nifskope is installed and set as the default program to open `.nif` files, you will be able to
 open files from the tool, by double-clicking on an item from a list view.
 
+__Note :__ I'm using [PyInstaller](https://www.pyinstaller.org/) to bundle the program into an executable :
+* One big .exe file
+* A directory containing an .exe, but also dependencies
+ Two options are possibleFlagged as a threat by 4 out of 70 engines. So I also provide an archive 
+
+I provide the two options because, when using [VirusTotal](https://www.virustotal.com/gui/home/upload), the one big .exe file
+is flagged by 4 engines out of 70, while the archive is not. You can also launch the tool from source, if you prefer.
+ 
+### From executable (one file)
+Run `HTool-NifBatchTools.exe` anywhere.
+
+### From archive (directory with executable and dependencies)
+Extract anywhere and run `HTool-NifBatchTools.exe`
+
 ### From source
 If you do not want to use the provided executable, you can launch the tool from the source code, available on 
 [GitHub](https://github.com/Hyperen0r/HTool_NifBatchTools). See section __Tools/Libraries used__.
 
-### From executable
-Run anywhere.
 
 ## How to use
 
@@ -81,6 +93,15 @@ The name is situated on the same line in the second column __(4)__. See image be
 * [PySide2](https://wiki.qt.io/Qt_for_Python)_, to build GUI_
 * [PyInstaller](https://www.pyinstaller.org/)_, to build installer_
 
+Command used to bundle program as onefile :
+```
+pyinstaller --windowed --name="HTool-NifBatchTools" --onefile --add-binary="venv/Lib/site-packages/pyffi/;./pyffi/" --add-data="README.md;." src/HTool.py
+```
+
+Command used to bundle program as a directory :
+```
+pyinstaller --windowed --name="HTool-NifBatchTools" --add-binary="venv/Lib/site-packages/pyffi/;./pyffi/" --add-data="README.md;." src/HTool.py
+```
 ## Known problems
 
 * __Applying patch is very slow__
