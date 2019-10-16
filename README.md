@@ -77,7 +77,7 @@ glossiness = 500.0
 specularstrength = 5.0
 ```
 
-* __My meshes is ignored/grey/red/not processed__
+* __My meshes are ignored/grey/red/not processed__
 
 The goal of this tool is to affect only body parts. So by using keywords, only the block matching one of the keyword 
 will see his glossiness and specular strength modified. If you need a block to be processed, add his name to the
