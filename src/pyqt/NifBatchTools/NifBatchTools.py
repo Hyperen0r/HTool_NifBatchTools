@@ -10,6 +10,7 @@ from pyffi.formats.nif import *
 
 from src.pyqt import QuickyGui
 from src.pyqt.MainWindow import MainWindow
+from src.pyqt.NifBatchTools.ListWidget import NifList
 from src.pyqt.Worker import NifProcessWorker, Worker
 from src.utils.config import CONFIG, save_config, get_config
 
@@ -59,15 +60,8 @@ class NifBatchTools(MainWindow):
         self.lcd_nif_files_ignored = QuickyGui.create_lcd(self)
 
 
-        self.nif_files_list_widget = QListWidget()
-        self.nif_files_list_widget.setAlternatingRowColors(True)
-        self.nif_files_list_widget.setStyleSheet("QListWidget {padding: 10px;} QListWidget::item { margin: 10px; }")
-        self.nif_files_list_widget.itemDoubleClicked.connect(self.open_file_location)
-
-        self.ignored_nif_files_list_widget = QListWidget()
-        self.ignored_nif_files_list_widget.setAlternatingRowColors(True)
-        self.ignored_nif_files_list_widget.setStyleSheet("QListWidget {padding: 10px;} QListWidget::item { margin: 10px}")
-        self.ignored_nif_files_list_widget.itemDoubleClicked.connect(self.open_file_location)
+        self.nif_files_list_widget = NifList(self)
+        self.ignored_nif_files_list_widget = NifList(self)
         self.update_nif_files()
 
         self.group_box_legends = QuickyGui.create_group_box(self, "Legends")
@@ -191,9 +185,6 @@ class NifBatchTools(MainWindow):
         left_v_box.setSpacing(10)
         self.mainLayout.addWidget(main_splitter)
 
-    def open_file_location(self, item):
-        os.startfile(item.text(), 'open')
-
     def toggle(self, value):
         self.group_box_parameters.setEnabled(value)
         self.group_box_load_files.setEnabled(value)
@@ -202,6 +193,8 @@ class NifBatchTools(MainWindow):
     def update_nif_files(self, value=0):
         self.lcd_nif_files_loaded.display(self.nif_files_list_widget.count())
         self.lcd_nif_files_ignored.display(self.ignored_nif_files_list_widget.count())
+        self.nif_files_list_widget.sortItems()
+        self.ignored_nif_files_list_widget.sortItems()
 
     def finish_action(self):
         self.progress_bar.setMinimum(0)
